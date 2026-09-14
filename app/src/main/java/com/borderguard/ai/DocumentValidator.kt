@@ -226,15 +226,38 @@ object DocumentValidator {
         // MRZ
         // ------------------------------------------------------------
 
+        // ------------------------------------------------------------
+// MRZ
+// ------------------------------------------------------------
+
         if (data.rawMrz.isNotEmpty()) {
 
-            results.add(
-                ValidationResult(
-                    "MRZ",
-                    Status.VALID,
-                    "Machine Readable Zone detected"
+            val mrzResults =
+                MrzValidator.validatePassportMrz(data.rawMrz)
+
+            val invalidChecks =
+                mrzResults.count { !it.isValid }
+
+            if (invalidChecks == 0) {
+
+                results.add(
+                    ValidationResult(
+                        "MRZ",
+                        Status.VALID,
+                        "MRZ detected • All check digits valid"
+                    )
                 )
-            )
+
+            } else {
+
+                results.add(
+                    ValidationResult(
+                        "MRZ",
+                        Status.INVALID,
+                        "$invalidChecks MRZ check(s) failed"
+                    )
+                )
+            }
 
         } else {
 
