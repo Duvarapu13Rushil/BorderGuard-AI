@@ -1,5 +1,8 @@
 package com.borderguard.ai
 
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
@@ -103,6 +106,11 @@ fun BorderGuardApp(
 
     var riskAssessment by remember {
         mutableStateOf<RiskAssessment?>(null)
+    }
+
+    // Temporary face detection result
+    var detectedFaceBitmap by remember {
+        mutableStateOf<Bitmap?>(null)
     }
 
     val context = LocalContext.current
@@ -284,6 +292,7 @@ fun BorderGuardApp(
                                 isAnalyzing = true
                                 forgeryProbability = null
                                 riskAssessment = null
+                                detectedFaceBitmap = null
 
                                 OcrProcessor.processImage(
                                     context = context,
@@ -328,42 +337,86 @@ fun BorderGuardApp(
 
                                             if (bitmap != null) {
 
+                                                // ---------------------------
+                                                // FACE DETECTION TEST
+                                                // ---------------------------
+
+                                                FaceDetectorProcessor.detectFace(
+                                                    bitmap = bitmap,
+                                                    onSuccess = { detectedFace ->
+
+                                                        detectedFaceBitmap =
+                                                            detectedFace.croppedBitmap
+
+                                                        println("FACE DETECTED")
+                                                        println(
+                                                            "FACE BOUNDS: " +
+                                                                    detectedFace.boundingBox
+                                                        )
+                                                        println(
+                                                            "FACE CROP SIZE: " +
+                                                                    "${detectedFace.croppedBitmap.width}x" +
+                                                                    "${detectedFace.croppedBitmap.height}"
+                                                        )
+                                                    },
+                                                    onFailure = { error ->
+
+                                                        println(
+                                                            "FACE DETECTION ERROR: " +
+                                                                    error.message
+                                                        )
+                                                    }
+                                                )
+
+                                                // ---------------------------
+                                                // FORGERY DETECTION
+                                                // ---------------------------
+
                                                 val probability =
                                                     forgeryDetector.detect(bitmap)
 
-                                                forgeryProbability = probability
+                                                forgeryProbability =
+                                                    probability
 
                                                 // Calculate overall risk
                                                 val assessment =
                                                     RiskAssessor.calculateRisk(
-                                                        forgeryProbability = probability,
-                                                        validationResults = validationResults
+                                                        forgeryProbability =
+                                                            probability,
+                                                        validationResults =
+                                                            validationResults
                                                     )
 
-                                                riskAssessment = assessment
+                                                riskAssessment =
+                                                    assessment
 
                                                 println(
-                                                    "AI REAL PROBABILITY: $probability"
+                                                    "AI REAL PROBABILITY: " +
+                                                            probability
                                                 )
 
                                                 println(
-                                                    "RISK SCORE: ${assessment.score}"
+                                                    "RISK SCORE: " +
+                                                            assessment.score
                                                 )
 
                                                 println(
-                                                    "RISK LEVEL: ${assessment.level}"
+                                                    "RISK LEVEL: " +
+                                                            assessment.level
                                                 )
                                             }
 
                                         } catch (error: Exception) {
 
                                             println(
-                                                "FORGERY DETECTION ERROR: ${error.message}"
+                                                "FORGERY DETECTION ERROR: " +
+                                                        error.message
                                             )
                                         }
 
                                         println(
-                                            "VALIDATION RESULTS: $validationResults"
+                                            "VALIDATION RESULTS: " +
+                                                    validationResults
                                         )
 
                                         isAnalyzing = false
@@ -403,6 +456,62 @@ fun BorderGuardApp(
                             text = "🔍 Analyzing document...",
                             modifier = Modifier.padding(top = 16.dp)
                         )
+                    }
+
+                    // ========================================================
+                    // DETECTED DOCUMENT FACE
+                    // ========================================================
+
+                    detectedFaceBitmap?.let { faceBitmap ->
+
+                        Spacer(
+                            modifier = Modifier.height(20.dp)
+                        )
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor =
+                                    MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+
+                                horizontalAlignment =
+                                    Alignment.CenterHorizontally
+                            ) {
+
+                                Text(
+                                    text = "👤 Detected Document Face",
+                                    fontSize = 19.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.height(14.dp)
+                                )
+
+                                Image(
+                                    bitmap =
+                                        faceBitmap.asImageBitmap(),
+
+                                    contentDescription =
+                                        "Detected passport face",
+
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(220.dp),
+
+                                    contentScale =
+                                        ContentScale.Fit
+                                )
+                            }
+                        }
                     }
 
                     // ========================================================
@@ -583,8 +692,8 @@ fun BorderGuardApp(
                     }
 
                     // ========================================================
-// RISK ASSESSMENT
-// ========================================================
+                    // RISK ASSESSMENT
+                    // ========================================================
 
                     riskAssessment?.let { assessment ->
 
@@ -631,7 +740,8 @@ fun BorderGuardApp(
                                 )
 
                                 Text(
-                                    text = "Risk Score: ${assessment.score}/100",
+                                    text =
+                                        "Risk Score: ${assessment.score}/100",
                                     fontSize = 18.sp
                                 )
 
