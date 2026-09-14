@@ -10,17 +10,29 @@ object RiskAssessor {
 
     fun calculateRisk(
         forgeryProbability: Float,
-        validationResults: List<ValidationResult>
+        validationResults: List<ValidationResult>,
+        faceMatch: Boolean? = null
     ): RiskAssessment {
 
-        // AI probability represents probability of REAL document.
-        // Therefore:
-        // 0.0 = fake
-        // 1.0 = real
+        /*
+         * AI forgery risk
+         *
+         * Model output:
+         * 1.0 = very likely REAL
+         * 0.0 = very likely FAKE
+         *
+         * Therefore:
+         * AI risk = (1 - real probability) * 100
+         */
 
-        var riskScore = ((1f - forgeryProbability) * 100f).toInt()
+        var riskScore =
+            ((1f - forgeryProbability) * 100f).toInt()
 
-        // Add risk for validation problems
+
+        /*
+         * Document validation
+         */
+
         validationResults.forEach { result ->
 
             when (result.status) {
@@ -39,8 +51,47 @@ object RiskAssessor {
             }
         }
 
-        // Keep score between 0 and 100
-        riskScore = riskScore.coerceIn(0, 100)
+
+        /*
+         * Face verification
+         *
+         * MATCH:
+         * No additional risk.
+         *
+         * MISMATCH:
+         * Significant identity risk.
+         *
+         * null:
+         * Face verification has not been performed yet.
+         */
+
+        when (faceMatch) {
+
+            true -> {
+                // Identity matches document owner.
+            }
+
+            false -> {
+                riskScore += 25
+            }
+
+            null -> {
+                // Do nothing.
+            }
+        }
+
+
+        /*
+         * Keep score between 0 and 100.
+         */
+
+        riskScore =
+            riskScore.coerceIn(0, 100)
+
+
+        /*
+         * Determine risk level.
+         */
 
         val level: String
         val recommendation: String
@@ -48,24 +99,37 @@ object RiskAssessor {
         when {
 
             riskScore >= 60 -> {
+
                 level = "HIGH RISK"
-                recommendation = "SECONDARY INSPECTION"
+
+                recommendation =
+                    "SECONDARY INSPECTION"
             }
 
             riskScore >= 30 -> {
+
                 level = "MEDIUM RISK"
-                recommendation = "MANUAL REVIEW"
+
+                recommendation =
+                    "MANUAL REVIEW"
             }
 
             else -> {
+
                 level = "LOW RISK"
-                recommendation = "NORMAL PROCESSING"
+
+                recommendation =
+                    "NORMAL PROCESSING"
             }
         }
 
+
         return RiskAssessment(
+
             score = riskScore,
+
             level = level,
+
             recommendation = recommendation
         )
     }
