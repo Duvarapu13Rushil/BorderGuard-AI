@@ -1,5 +1,9 @@
 package com.borderguard.ai
 
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.time.format.DateTimeParseException
+
 data class ValidationResult(
     val field: String,
     val status: Status,
@@ -18,7 +22,10 @@ object DocumentValidator {
 
         val results = mutableListOf<ValidationResult>()
 
-        // Document type
+        // ------------------------------------------------------------
+        // Document Type
+        // ------------------------------------------------------------
+
         if (data.documentType == "Passport") {
             results.add(
                 ValidationResult(
@@ -37,7 +44,10 @@ object DocumentValidator {
             )
         }
 
-        // Passport number
+        // ------------------------------------------------------------
+        // Passport Number
+        // ------------------------------------------------------------
+
         if (data.passportNumber.isNotEmpty()) {
             results.add(
                 ValidationResult(
@@ -56,8 +66,14 @@ object DocumentValidator {
             )
         }
 
+        // ------------------------------------------------------------
         // Name
-        if (data.surname.isNotEmpty() && data.givenNames.isNotEmpty()) {
+        // ------------------------------------------------------------
+
+        if (
+            data.surname.isNotEmpty() &&
+            data.givenNames.isNotEmpty()
+        ) {
             results.add(
                 ValidationResult(
                     "Name",
@@ -75,7 +91,10 @@ object DocumentValidator {
             )
         }
 
+        // ------------------------------------------------------------
         // Nationality
+        // ------------------------------------------------------------
+
         if (data.nationality.isNotEmpty()) {
             results.add(
                 ValidationResult(
@@ -94,7 +113,10 @@ object DocumentValidator {
             )
         }
 
-        // Date of birth
+        // ------------------------------------------------------------
+        // Date of Birth
+        // ------------------------------------------------------------
+
         if (data.dateOfBirth.isNotEmpty()) {
             results.add(
                 ValidationResult(
@@ -113,8 +135,14 @@ object DocumentValidator {
             )
         }
 
+        // ------------------------------------------------------------
         // Sex
-        if (data.sex.isNotEmpty() && data.sex != "Unknown") {
+        // ------------------------------------------------------------
+
+        if (
+            data.sex.isNotEmpty() &&
+            data.sex != "Unknown"
+        ) {
             results.add(
                 ValidationResult(
                     "Sex",
@@ -132,16 +160,56 @@ object DocumentValidator {
             )
         }
 
-        // Expiry date
+        // ------------------------------------------------------------
+        // Expiry Date
+        // ------------------------------------------------------------
+
         if (data.expiryDate.isNotEmpty()) {
 
-            results.add(
-                ValidationResult(
-                    "Expiry Date",
-                    Status.VALID,
-                    data.expiryDate
+            val formatter =
+                DateTimeFormatter.ofPattern("dd/MM/yy")
+
+            try {
+
+                val expiryDate =
+                    LocalDate.parse(
+                        data.expiryDate,
+                        formatter
+                    )
+
+                val today = LocalDate.now()
+
+                if (expiryDate.isBefore(today)) {
+
+                    results.add(
+                        ValidationResult(
+                            "Expiry Date",
+                            Status.INVALID,
+                            "EXPIRED on ${data.expiryDate}"
+                        )
+                    )
+
+                } else {
+
+                    results.add(
+                        ValidationResult(
+                            "Expiry Date",
+                            Status.VALID,
+                            "Valid until ${data.expiryDate}"
+                        )
+                    )
+                }
+
+            } catch (error: DateTimeParseException) {
+
+                results.add(
+                    ValidationResult(
+                        "Expiry Date",
+                        Status.WARNING,
+                        "Expiry date format could not be verified"
+                    )
                 )
-            )
+            }
 
         } else {
 
@@ -154,8 +222,12 @@ object DocumentValidator {
             )
         }
 
+        // ------------------------------------------------------------
         // MRZ
+        // ------------------------------------------------------------
+
         if (data.rawMrz.isNotEmpty()) {
+
             results.add(
                 ValidationResult(
                     "MRZ",
@@ -163,7 +235,9 @@ object DocumentValidator {
                     "Machine Readable Zone detected"
                 )
             )
+
         } else {
+
             results.add(
                 ValidationResult(
                     "MRZ",

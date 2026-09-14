@@ -1,10 +1,6 @@
 package com.borderguard.ai
 
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.ui.platform.LocalContext
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -18,7 +14,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -30,6 +28,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -80,13 +79,37 @@ fun BorderGuardApp(
     var showCamera by remember {
         mutableStateOf(false)
     }
-    var documentData by remember { mutableStateOf<DocumentData?>(null) }
+
+    var documentData by remember {
+        mutableStateOf<DocumentData?>(null)
+    }
+
     var validationResults by remember {
         mutableStateOf<List<ValidationResult>>(emptyList())
     }
-    var ocrText by remember { mutableStateOf("") }
-    var isAnalyzing by remember { mutableStateOf(false) }
+
+    var ocrText by remember {
+        mutableStateOf("")
+    }
+
+    var isAnalyzing by remember {
+        mutableStateOf(false)
+    }
+
+    // AI forgery detector result
+    var forgeryProbability by remember {
+        mutableStateOf<Float?>(null)
+    }
+
+    var riskAssessment by remember {
+        mutableStateOf<RiskAssessment?>(null)
+    }
+
     val context = LocalContext.current
+
+    val forgeryDetector = remember {
+        ForgeryDetector(context)
+    }
 
     // CAMERA SCREEN
     if (showCamera) {
@@ -146,6 +169,10 @@ fun BorderGuardApp(
                 )
 
                 Spacer(modifier = Modifier.height(30.dp))
+
+                // ============================================================
+                // NO DOCUMENT SELECTED
+                // ============================================================
 
                 if (selectedImageUri == null) {
 
@@ -221,6 +248,10 @@ fun BorderGuardApp(
 
                 } else {
 
+                    // ========================================================
+                    // DOCUMENT SELECTED
+                    // ========================================================
+
                     Text(
                         text = "DOCUMENT SELECTED",
                         fontSize = 14.sp,
@@ -241,51 +272,145 @@ fun BorderGuardApp(
 
                     Spacer(modifier = Modifier.height(20.dp))
 
+                    // ========================================================
+                    // ANALYZE BUTTON
+                    // ========================================================
+
                     Button(
                         onClick = {
+
                             if (selectedImageUri != null) {
+
                                 isAnalyzing = true
+                                forgeryProbability = null
+                                riskAssessment = null
 
                                 OcrProcessor.processImage(
                                     context = context,
                                     imageUri = selectedImageUri,
                                     onSuccess = { text ->
+
                                         ocrText = text
 
-                                        val parsedData = DocumentParser.parsePassport(text)
+                                        // -------------------------------
+                                        // DOCUMENT PARSING
+                                        // -------------------------------
+
+                                        val parsedData =
+                                            DocumentParser.parsePassport(text)
+
                                         documentData = parsedData
 
+                                        // -------------------------------
+                                        // DOCUMENT VALIDATION
+                                        // -------------------------------
+
                                         validationResults =
-                                            DocumentValidator.validatePassport(parsedData)
-                                        println("VALIDATION RESULTS: $validationResults")
+                                            DocumentValidator
+                                                .validatePassport(parsedData)
+
+                                        // -------------------------------
+                                        // AI FORGERY DETECTION
+                                        // -------------------------------
+
+                                        try {
+
+                                            val inputStream =
+                                                context.contentResolver
+                                                    .openInputStream(
+                                                        selectedImageUri
+                                                    )
+
+                                            val bitmap =
+                                                inputStream?.use {
+                                                    BitmapFactory.decodeStream(it)
+                                                }
+
+                                            if (bitmap != null) {
+
+                                                val probability =
+                                                    forgeryDetector.detect(bitmap)
+
+                                                forgeryProbability = probability
+
+                                                // Calculate overall risk
+                                                val assessment =
+                                                    RiskAssessor.calculateRisk(
+                                                        forgeryProbability = probability,
+                                                        validationResults = validationResults
+                                                    )
+
+                                                riskAssessment = assessment
+
+                                                println(
+                                                    "AI REAL PROBABILITY: $probability"
+                                                )
+
+                                                println(
+                                                    "RISK SCORE: ${assessment.score}"
+                                                )
+
+                                                println(
+                                                    "RISK LEVEL: ${assessment.level}"
+                                                )
+                                            }
+
+                                        } catch (error: Exception) {
+
+                                            println(
+                                                "FORGERY DETECTION ERROR: ${error.message}"
+                                            )
+                                        }
+
+                                        println(
+                                            "VALIDATION RESULTS: $validationResults"
+                                        )
 
                                         isAnalyzing = false
                                     },
+
                                     onFailure = { error ->
-                                        ocrText = "OCR failed: ${error.message}"
+
+                                        ocrText =
+                                            "OCR failed: ${error.message}"
+
                                         isAnalyzing = false
                                     }
                                 )
                             }
                         },
+
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(58.dp),
+
                         shape = RoundedCornerShape(14.dp)
                     ) {
+
                         Text(
                             text = "🤖  Analyze Document",
                             fontSize = 17.sp
                         )
                     }
+
+                    // ========================================================
+                    // ANALYZING MESSAGE
+                    // ========================================================
+
                     if (isAnalyzing) {
+
                         Text(
                             text = "🔍 Analyzing document...",
                             modifier = Modifier.padding(top = 16.dp)
                         )
                     }
 
+                    // ========================================================
+                    // OCR RESULT
+                    // ========================================================
+
                     if (ocrText.isNotEmpty()) {
+
                         Text(
                             text = "Extracted Text",
                             modifier = Modifier.padding(top = 16.dp)
@@ -297,11 +422,19 @@ fun BorderGuardApp(
                                 .padding(top = 8.dp)
                                 .height(300.dp)
                         ) {
+
                             item {
-                                Text(text = ocrText)
+                                Text(
+                                    text = ocrText
+                                )
                             }
                         }
                     }
+
+                    // ========================================================
+                    // DOCUMENT INFORMATION
+                    // ========================================================
+
                     documentData?.let { data ->
 
                         Text(
@@ -311,18 +444,24 @@ fun BorderGuardApp(
 
                         Text(
                             text = """
-            Document Type: ${data.documentType}
-            Passport Number: ${data.passportNumber}
-            Surname: ${data.surname}
-            Given Names: ${data.givenNames}
-            Nationality: ${data.nationality}
-            Date of Birth: ${data.dateOfBirth}
-            Sex: ${data.sex}
-            Expiry Date: ${data.expiryDate}
-        """.trimIndent(),
+                                Document Type: ${data.documentType}
+                                Passport Number: ${data.passportNumber}
+                                Surname: ${data.surname}
+                                Given Names: ${data.givenNames}
+                                Nationality: ${data.nationality}
+                                Date of Birth: ${data.dateOfBirth}
+                                Sex: ${data.sex}
+                                Expiry Date: ${data.expiryDate}
+                            """.trimIndent(),
+
                             modifier = Modifier.padding(top = 10.dp)
                         )
                     }
+
+                    // ========================================================
+                    // DOCUMENT VALIDATION
+                    // ========================================================
+
                     if (validationResults.isNotEmpty()) {
 
                         Text(
@@ -333,19 +472,196 @@ fun BorderGuardApp(
                         validationResults.forEach { result ->
 
                             val icon = when (result.status) {
+
                                 Status.VALID -> "✓"
+
                                 Status.WARNING -> "⚠"
+
                                 Status.INVALID -> "✗"
                             }
 
                             Text(
-                                text = "$icon ${result.field}: ${result.message}",
+                                text =
+                                    "$icon ${result.field}: ${result.message}",
+
                                 modifier = Modifier.padding(top = 8.dp)
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    // ========================================================
+                    // AI FORGERY DETECTION RESULT
+                    // ========================================================
+
+                    forgeryProbability?.let { probability ->
+
+                        val isReal = probability >= 0.5f
+
+                        val confidence =
+                            if (isReal) {
+                                probability * 100f
+                            } else {
+                                (1f - probability) * 100f
+                            }
+
+                        Spacer(
+                            modifier = Modifier.height(20.dp)
+                        )
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor =
+                                    MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+
+                                horizontalAlignment =
+                                    Alignment.CenterHorizontally
+                            ) {
+
+                                Text(
+                                    text = "🤖 AI Forgery Detection",
+                                    fontSize = 19.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.height(14.dp)
+                                )
+
+                                Text(
+                                    text = if (isReal) {
+                                        "✓ REAL DOCUMENT"
+                                    } else {
+                                        "⚠ FAKE DOCUMENT"
+                                    },
+
+                                    fontSize = 24.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.height(8.dp)
+                                )
+
+                                Text(
+                                    text = if (isReal) {
+                                        "Real probability: %.2f%%"
+                                            .format(confidence)
+                                    } else {
+                                        "Fake probability: %.2f%%"
+                                            .format(confidence)
+                                    },
+
+                                    fontSize = 16.sp
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.height(6.dp)
+                                )
+
+                                Text(
+                                    text =
+                                        "AI confidence: %.2f%%"
+                                            .format(confidence),
+
+                                    fontSize = 14.sp,
+
+                                    color =
+                                        MaterialTheme.colorScheme
+                                            .onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    // ========================================================
+// RISK ASSESSMENT
+// ========================================================
+
+                    riskAssessment?.let { assessment ->
+
+                        Spacer(
+                            modifier = Modifier.height(20.dp)
+                        )
+
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor =
+                                    MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+
+                                horizontalAlignment =
+                                    Alignment.CenterHorizontally
+                            ) {
+
+                                Text(
+                                    text = "🛡️ Risk Assessment",
+                                    fontSize = 19.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.height(14.dp)
+                                )
+
+                                Text(
+                                    text = assessment.level,
+                                    fontSize = 25.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.height(8.dp)
+                                )
+
+                                Text(
+                                    text = "Risk Score: ${assessment.score}/100",
+                                    fontSize = 18.sp
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.height(12.dp)
+                                )
+
+                                Text(
+                                    text = "Recommendation",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+
+                                Spacer(
+                                    modifier = Modifier.height(4.dp)
+                                )
+
+                                Text(
+                                    text = assessment.recommendation,
+                                    fontSize = 16.sp
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // ========================================================
+                    // CHOOSE ANOTHER DOCUMENT
+                    // ========================================================
 
                     Button(
                         onClick = onPickImage,
@@ -354,16 +670,25 @@ fun BorderGuardApp(
                             .height(52.dp),
                         shape = RoundedCornerShape(14.dp)
                     ) {
-                        Text("🔄  Choose Another")
+
+                        Text(
+                            text = "🔄  Choose Another"
+                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.weight(1f))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 Text(
-                    text = "Prototype • AI-assisted document screening",
+                    text =
+                        "Prototype • AI-assisted document screening",
+
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+
+                    color =
+                        MaterialTheme.colorScheme
+                            .onSurfaceVariant,
+
                     textAlign = TextAlign.Center
                 )
             }
@@ -373,6 +698,7 @@ fun BorderGuardApp(
 
 @Composable
 fun FeatureText(text: String) {
+
     Text(
         text = text,
         fontSize = 14.sp,
